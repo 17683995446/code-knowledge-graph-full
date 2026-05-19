@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Knowledge Graph - 代码知识图谱系统</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-force@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-tertiary: #1f2937;
+            --text-primary: #e5e7eb;
+            --text-secondary: #9ca3af;
+            --accent-cyan: #06b6d4;
+            --accent-emerald: #10b981;
+            --accent-violet: #8b5cf6;
+            --accent-amber: #f59e0b;
+            --accent-rose: #f43f5e;
+            --border-color: #374151;
+            --glow-cyan: 0 0 20px rgba(6, 182, 212, 0.3);
+            --glow-emerald: 0 0 20px rgba(16, 185, 129, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .noise-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.03;
+            z-index: 1000;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+        }
+
+        .grid-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(6, 182, 212, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(6, 182, 212, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 0;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 2rem;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-violet));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--glow-cyan);
+        }
+
+        .logo-icon svg {
+            width: 28px;
+            height: 28px;
+            fill: white;
+        }
+
+        .logo h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-emerald));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 9999px;
+            font-size: 0.875rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-emerald);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--glow-cyan);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-emerald));
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-cyan);
+        }
+
+        .stat-change {
+            font-size: 0.75rem;
+            color: var(--accent-emerald);
+            margin-top: 0.5rem;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .nav-tab {
+            padding: 0.75rem 1.5rem;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .nav-tab:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border-color: var(--accent-cyan);
+        }
+
+        .nav-tab.active {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(16, 185, 129, 0.1));
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+        }
+
+        .panel-title {
+            font-size: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .panel-body {
+            padding: 1.5rem;
+        }
+
+        #graph-container {
+            width: 100%;
+            height: 600px;
+            background: var(--bg-primary);
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #graph-container svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .node {
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .node:hover {
+            filter: brightness(1.2);
+        }
+
+        .link {
+            stroke: var(--border-color);
+            stroke-opacity: 0.6;
+            transition: all 0.3s;
+        }
+
+        .link:hover {
+            stroke: var(--accent-cyan);
+            stroke-opacity: 1;
+        }
+
+        .legend {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .legend-dot.file { background: var(--accent-cyan); }
+        .legend-dot.class { background: var(--accent-emerald); }
+        .legend-dot.interface { background: var(--accent-violet); }
+        .legend-dot.function { background: var(--accent-amber); }
+
+        .diagram-section {
+            margin-bottom: 2rem;
+        }
+
+        .diagram-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--accent-cyan);
+        }
+
+        .mermaid {
+            background: var(--bg-tertiary);
+            padding: 1.5rem;
+            border-radius: 12px;
+            overflow-x: auto;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0.875rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background: var(--bg-tertiary);
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        tr:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .badge-class { background: rgba(16, 185, 129, 0.2); color: var(--accent-emerald); }
+        .badge-interface { background: rgba(139, 92, 246, 0.2); color: var(--accent-violet); }
+        .badge-function { background: rgba(245, 158, 11, 0.2); color: var(--accent-amber); }
+        .badge-struct { background: rgba(6, 182, 212, 0.2); color: var(--accent-cyan); }
+
+        .search-box {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 0.875rem 1rem 0.875rem 3rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+            box-shadow: var(--glow-cyan);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+
+        .search-results {
+            margin-top: 1rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .search-result-item {
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 1px solid transparent;
+        }
+
+        .search-result-item:hover {
+            border-color: var(--accent-cyan);
+            background: rgba(6, 182, 212, 0.05);
+        }
+
+        .code-block {
+            background: var(--bg-primary);
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            padding: 1rem 1.5rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent-emerald);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            box-shadow: var(--glow-emerald);
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(100%); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .node-tooltip {
+            position: absolute;
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent-cyan);
+            border-radius: 8px;
+            padding: 1rem;
+            max-width: 300px;
+            z-index: 100;
+            pointer-events: none;
+            box-shadow: var(--glow-cyan);
+        }
+
+        .llm-panel {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.1));
+            border: 1px solid var(--accent-violet);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .llm-panel textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 1rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.875rem;
+            resize: vertical;
+        }
+
+        .llm-panel textarea:focus {
+            outline: none;
+            border-color: var(--accent-violet);
+        }
+
+        .llm-response {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--bg-primary);
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        footer {
+            margin-top: 3rem;
+            padding: 2rem 0;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .nav-tabs { gap: 0.25rem; }
+            .nav-tab { padding: 0.5rem 1rem; font-size: 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="noise-overlay"></div>
+    <div class="grid-bg"></div>
+
+    <div class="container">
+        <header>
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <h1>Code Knowledge Graph</h1>
+            </div>
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                <span>Real-time Syncing</span>
+            </div>
+        </header>
+
+        <div class="stats-grid" id="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/></svg>
+                    Files
+                </div>
+                <div class="stat-value" id="stat-files">-</div>
+                <div class="stat-change" id="stat-files-change">Loading...</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
+                    Types
+                </div>
+                <div class="stat-value" id="stat-types">-</div>
+                <div class="stat-change" id="stat-types-change">Classes, Interfaces, etc.</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>
+                    Functions
+                </div>
+                <div class="stat-value" id="stat-functions">-</div>
+                <div class="stat-change" id="stat-functions-change">Methods and functions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd"/></svg>
+                    Relations
+                </div>
+                <div class="stat-value" id="stat-relations">-</div>
+                <div class="stat-change" id="stat-relations-change">Calls and references</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z"/><path d="M3 7v3c0 1.657 3.134 3 7 3s7-1.343 7-3V7c0 1.657-3.134 3-7 3S3 8.657 3 7z"/><path d="M17 5c0 1.657-3.134 3-7 3S3 6.657 3 5s3.134-3 7-3 7 1.343 7 3z"/></svg>
+                    Languages
+                </div>
+                <div class="stat-value" id="stat-languages">-</div>
+                <div class="stat-change" id="stat-languages-change">Supported languages</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/></svg>
+                    Database Size
+                </div>
+                <div class="stat-value" id="stat-db-size">-</div>
+                <div class="stat-change" id="stat-db-size-change">MB</div>
+            </div>
+        </div>
+
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-tab="graph">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z"/><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z"/></svg>
+                知识图谱
+            </button>
+            <button class="nav-tab" data-tab="architecture">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"/></svg>
+                系统架构
+            </button>
+            <button class="nav-tab" data-tab="flow">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
+                处理流程
+            </button>
+            <button class="nav-tab" data-tab="sequence">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd"/></svg>
+                时序图
+            </button>
+            <button class="nav-tab" data-tab="files">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/></svg>
+                文件列表
+            </button>
+            <button class="nav-tab" data-tab="types">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
+                类型定义
+            </button>
+            <button class="nav-tab" data-tab="functions">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>
+                函数列表
+            </button>
+            <button class="nav-tab" data-tab="ai">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>
+                AI 查询
+            </button>
+        </nav>
+
+        <div id="tab-graph" class="tab-content active">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                        交互式知识图谱
+                    </div>
+                    <div class="legend">
+                        <div class="legend-item"><div class="legend-dot file"></div> 文件</div>
+                        <div class="legend-item"><div class="legend-dot class"></div> 类</div>
+                        <div class="legend-item"><div class="legend-dot interface"></div> 接口</div>
+                        <div class="legend-item"><div class="legend-dot function"></div> 函数</div>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div id="graph-container">
+                        <div class="loading"><div class="spinner"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-architecture" class="tab-content">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"/></svg>
+                        系统架构图
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="mermaid" id="architecture-diagram">
+graph TB
+    subgraph Input["📥 输入层"]
+        FM[📁 File Monitor<br/>文件监控]
+        FE[⚡ File Events<br/>文件事件]
+    end
+    
+    subgraph Processing["⚙️ 处理层"]
+        DQ[⏱️ Debounce Queue<br/>防抖队列]
+        UE[🚀 Update Engine<br/>更新引擎]
+        PI[🔌 Parser Interface<br/>解析器接口]
+    end
+    
+    subgraph Languages["🌐 多语言支持"]
+        PYP[🐍 Python Parser<br/>Python解析器]
+        JVP[☕ Java Parser<br/>Java解析器]
+        JSP[📜 JS/TS Parser<br/>JS/TS解析器]
+        GOP[🔵 Go Parser<br/>Go解析器]
+        ATS[📱 ArkTS Parser<br/>ArkTS解析器]
+    end
+    
+    subgraph Storage["💾 存储层"]
+        DB[(🗃️ SQLite Database<br/>SQLite数据库)]
+    end
+    
+    subgraph Output["📤 输出层"]
+        WS[🌐 Web Server<br/>Web服务器]
+        LLM[🤖 LLM Service<br/>LLM服务]
+        API[📡 REST API<br/>REST接口]
+    end
+    
+    FM --> FE
+    FE --> DQ
+    DQ --> UE
+    UE --> DB
+    PI --> UE
+    PYP --> PI
+    JVP --> PI
+    JSP --> PI
+    GOP --> PI
+    ATS --> PI
+    WS --> DB
+    LLM --> UE
+    API --> WS
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-flow" class="tab-content">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
+                        文件处理流程
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="mermaid" id="flow-diagram">
+flowchart TD
+    A[🚀 Start<br/>开始] --> B[📁 File Change Detected<br/>检测到文件变更]
+    B --> C{Event Type?<br/>事件类型}
+    C -->|Create/Modify| D[📖 Read File Content<br/>读取文件内容]
+    C -->|Delete| E[🗑️ Remove from Database<br/>从数据库删除]
+    D --> F[🔍 Detect Language<br/>检测语言类型]
+    F --> G[🔌 Select Parser<br/>选择解析器]
+    G --> H[📝 Parse File<br/>解析文件]
+    H --> I[🏗️ Extract Types<br/>提取类型定义]
+    I --> J[⚡ Extract Functions<br/>提取函数定义]
+    J --> K[🔗 Resolve Relationships<br/>解析关系]
+    K --> L[🗑️ Delete Old Data<br/>删除旧数据]
+    L --> M[➕ Insert New Data<br/>插入新数据]
+    M --> N[📡 Emit WebSocket Event<br/>发送WebSocket事件]
+    N --> O[🔄 Update Web UI<br/>更新Web界面]
+    O --> P[✅ Complete<br/>完成]
+    E --> P
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-sequence" class="tab-content">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd"/></svg>
+                        组件交互时序图
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="mermaid" id="sequence-diagram">
+sequenceDiagram
+    participant FS as 📁 FileSystem
+    participant FM as 📡 FileMonitor
+    participant DQ as ⏱️ DebounceQueue
+    participant UE as ⚙️ UpdateEngine
+    participant PS as 🔌 Parser
+    participant DB as 💾 Database
+    participant WS as 🌐 WebSocket
+    participant UI as 🎨 WebUI
+    
+    FS->>FM: File Changed Event
+    FM->>FM: Filter & Validate
+    FM->>DQ: Queue Event
+    Note over DQ: Wait 1000ms debounce
+    
+    DQ->>UE: Batch Events
+    UE->>PS: Parse File
+    PS-->>UE: ParseResult
+    
+    UE->>DB: Begin Transaction
+    UE->>DB: DELETE Old Data
+    UE->>DB: INSERT New Data
+    DB-->>UE: Success
+    
+    UE->>WS: Emit Update
+    WS->>UI: Broadcast Event
+    UI-->>UI: Update Visualization
+    
+    Note over UE,DB: Transaction Complete
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-files" class="tab-content">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/></svg>
+                        文件列表
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="search-box">
+                        <svg class="search-icon" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
+                        <input type="text" class="search-input" id="file-search" placeholder="搜索文件...">
+                    </div>
+                    <div class="table-container">
+                        <table id="files-table">
+                            <thead>
+                                <tr>
+                                    <th>文件名</th>
+                                    <th>语言</th>
+                                    <th>类型数</th>
+                                    <th>函数数</th>
+                                    <th>修改时间</th>
+                                </tr>
+                            </thead>
+                            <tbody id="files-tbody">
+                                <tr><td colspan="5" class="loading"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-types" class="tab-content">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/></svg>
+                        类型定义
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="search-box">
+                        <svg class="search-icon" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
+                        <input type="text" class="search-input" id="type-search" placeholder="搜索类型 (类、接口、结构体)...">
+                    </div>
+                    <div class="table-container">
+                        <table id="types-table">
+                            <thead>
+                                <tr>
+                                    <th>名称</th>
+                                    <th>类型</th>
+                                    <th>文件</th>
+                                    <th>行号</th>
+                                    <th>基类</th>
+                                </tr>
+                            </thead>
+                            <tbody id="types-tbody">
+                                <tr><td colspan="5" class="loading"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-functions" class="tab-content">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>
+                        函数列表
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="search-box">
+                        <svg class="search-icon" width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
+                        <input type="text" class="search-input" id="function-search" placeholder="搜索函数...">
+                    </div>
+                    <div class="table-container">
+                        <table id="functions-table">
+                            <thead>
+                                <tr>
+                                    <th>名称</th>
+                                    <th>所属类型</th>
+                                    <th>签名</th>
+                                    <th>文件</th>
+                                    <th>行号</th>
+                                </tr>
+                            </thead>
+                            <tbody id="functions-tbody">
+                                <tr><td colspan="5" class="loading"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-ai" class="tab-content">
+            <div class="llm-panel">
+                <h3 style="margin-bottom: 1rem; color: var(--accent-violet);">
+                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20" style="vertical-align: middle; margin-right: 0.5rem;"><path d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.616 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.715-5.349L11 6.477V16h2a1 1 0 110 2H7a1 1 0 110-2h2V6.477L6.237 7.583l1.715 5.349a1 1 0 01-.285 1.05A3.989 3.989 0 015 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.738-5.42-1.233-.617a1 1 0 01.894-1.788l1.599.799L9 4.323V3a1 1 0 011-1z"/></svg>
+                    AI 代码知识问答
+                </h3>
+                <textarea id="llm-question" placeholder="例如：解释 UserService 类的作用，或者查找所有与支付相关的函数"></textarea>
+                <button id="llm-submit" style="margin-top: 1rem; padding: 0.75rem 1.5rem; background: linear-gradient(135deg, var(--accent-violet), var(--accent-cyan)); border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: 600;">
+                    发送问题
+                </button>
+                <div id="llm-response" class="llm-response" style="display: none;"></div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Code Knowledge Graph System | 基于第一性原理设计 | 支持全编程语言</p>
+        </footer>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: false,
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#06b6d4',
+                primaryTextColor: '#e5e7eb',
+                primaryBorderColor: '#374151',
+                lineColor: '#06b6d4',
+                secondaryColor: '#1f2937',
+                tertiaryColor: '#111827'
+            }
+        });
+
+        const API_BASE = '';
+        let socket;
+        let graphData = { nodes: [], edges: [] };
+
+        function initSocketIO() {
+            socket = io();
+            
+            socket.on('connect', () => {
+                console.log('WebSocket connected');
+                socket.emit('subscribe', { type: 'stats' });
+            });
+            
+            socket.on('stats_update', (data) => {
+                updateStats(data);
+            });
+            
+            socket.on('file_created', (data) => {
+                showToast(`File created: ${data.path}`);
+                refreshData();
+            });
+            
+            socket.on('file_updated', (data) => {
+                showToast(`File updated: ${data.path}`);
+                refreshData();
+            });
+            
+            socket.on('file_deleted', (data) => {
+                showToast(`File deleted: ${data.path}`);
+                refreshData();
+            });
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/api/stats`);
+                const result = await response.json();
+                if (result.success) {
+                    updateStats(result.data);
+                }
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        function updateStats(data) {
+            document.getElementById('stat-files').textContent = data.total_files || 0;
+            document.getElementById('stat-types').textContent = data.total_types || 0;
+            document.getElementById('stat-functions').textContent = data.total_functions || 0;
+            document.getElementById('stat-relations').textContent = (data.total_calls || 0) + (data.total_references || 0);
+            
+            const languages = data.files_by_language || [];
+            document.getElementById('stat-languages').textContent = languages.length;
+            
+            document.getElementById('stat-db-size').textContent = data.database_size_mb || 0;
+        }
+
+        async function loadGraph() {
+            try {
+                const response = await fetch(`${API_BASE}/api/graph/full`);
+                const result = await response.json();
+                if (result.success) {
+                    graphData = result.data;
+                    renderGraph(result.data);
+                }
+            } catch (error) {
+                console.error('Failed to load graph:', error);
+            }
+        }
+
+        function renderGraph(data) {
+            const container = document.getElementById('graph-container');
+            container.innerHTML = '';
+            
+            if (!data.nodes || data.nodes.length === 0) {
+                container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-secondary);">No data available</div>';
+                return;
+            }
+
+            const width = container.clientWidth;
+            const height = 600;
+            
+            const svg = d3.select(container)
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            const defs = svg.append('defs');
+            
+            defs.append('marker')
+                .attr('id', 'arrowhead')
+                .attr('viewBox', '-0 -5 10 10')
+                .attr('refX', 20)
+                .attr('refY', 0)
+                .attr('orient', 'auto')
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .append('path')
+                .attr('d', 'M 0,-5 L 10 ,0 L 0,5')
+                .attr('fill', '#06b6d4');
+
+            const g = svg.append('g');
+            
+            svg.call(d3.zoom()
+                .scaleExtent([0.1, 4])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                }));
+
+            const simulation = d3.forceSimulation(data.nodes)
+                .force('link', d3.forceLink(data.edges)
+                    .id(d => d.id)
+                    .distance(100))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(40));
+
+            const link = g.append('g')
+                .selectAll('line')
+                .data(data.edges)
+                .enter()
+                .append('line')
+                .attr('class', 'link')
+                .attr('stroke-width', 2)
+                .attr('marker-end', 'url(#arrowhead)');
+
+            const node = g.append('g')
+                .selectAll('g')
+                .data(data.nodes)
+                .enter()
+                .append('g')
+                .attr('class', 'node')
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+
+            node.append('circle')
+                .attr('r', d => {
+                    switch(d.type) {
+                        case 'file': return 15;
+                        case 'class': return 12;
+                        case 'interface': return 12;
+                        case 'function': return 10;
+                        default: return 8;
+                    }
+                })
+                .attr('fill', d => {
+                    switch(d.type) {
+                        case 'file': return '#06b6d4';
+                        case 'class': return '#10b981';
+                        case 'interface': return '#8b5cf6';
+                        case 'function': return '#f59e0b';
+                        default: return '#6b7280';
+                    }
+                })
+                .attr('stroke', '#e5e7eb')
+                .attr('stroke-width', 2);
+
+            node.append('text')
+                .text(d => d.label)
+                .attr('x', 20)
+                .attr('y', 5)
+                .attr('fill', '#e5e7eb')
+                .attr('font-size', '11px')
+                .attr('font-family', 'JetBrains Mono, monospace');
+
+            node.on('mouseover', function(event, d) {
+                showTooltip(event, d);
+            }).on('mouseout', hideTooltip);
+
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+
+                node.attr('transform', d => `translate(${d.x},${d.y})`);
+            });
+
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+        }
+
+        function showTooltip(event, d) {
+            let tooltip = document.getElementById('node-tooltip');
+            if (!tooltip) {
+                tooltip = document.createElement('div');
+                tooltip.id = 'node-tooltip';
+                tooltip.className = 'node-tooltip';
+                document.body.appendChild(tooltip);
+            }
+            
+            const content = `
+                <strong>${d.label}</strong><br>
+                <span style="color: var(--accent-cyan);">Type: ${d.type}</span><br>
+                ${d.data ? `<small>${JSON.stringify(d.data, null, 2).substring(0, 100)}...</small>` : ''}
+            `;
+            tooltip.innerHTML = content;
+            tooltip.style.display = 'block';
+            tooltip.style.left = (event.pageX + 10) + 'px';
+            tooltip.style.top = (event.pageY + 10) + 'px';
+        }
+
+        function hideTooltip() {
+            const tooltip = document.getElementById('node-tooltip');
+            if (tooltip) {
+                tooltip.style.display = 'none';
+            }
+        }
+
+        async function loadFiles() {
+            try {
+                const response = await fetch(`${API_BASE}/api/files`);
+                const result = await response.json();
+                if (result.success) {
+                    renderFilesTable(result.data);
+                }
+            } catch (error) {
+                console.error('Failed to load files:', error);
+            }
+        }
+
+        function renderFilesTable(files) {
+            const tbody = document.getElementById('files-tbody');
+            if (!files || files.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No files found</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = files.map(f => `
+                <tr>
+                    <td><a href="#" onclick="viewFile(${f.id})" style="color:var(--accent-cyan);">${f.path.split('/').pop()}</a></td>
+                    <td><span class="badge badge-class">${f.language}</span></td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>${new Date(f.modified * 1000).toLocaleString()}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function loadTypes() {
+            try {
+                const response = await fetch(`${API_BASE}/api/types`);
+                const result = await response.json();
+                if (result.success) {
+                    renderTypesTable(result.data);
+                }
+            } catch (error) {
+                console.error('Failed to load types:', error);
+            }
+        }
+
+        function renderTypesTable(types) {
+            const tbody = document.getElementById('types-tbody');
+            if (!types || types.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No types found</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = types.map(t => `
+                <tr>
+                    <td><a href="#" onclick="viewType(${t.id})" style="color:var(--accent-emerald);">${t.name}</a></td>
+                    <td><span class="badge badge-${t.kind}">${t.kind}</span></td>
+                    <td>${t.file_path || 'Unknown'}</td>
+                    <td>${t.start_line || '-'}</td>
+                    <td>${t.base_classes ? t.base_classes.join(', ') : '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function loadFunctions() {
+            try {
+                const response = await fetch(`${API_BASE}/api/functions`);
+                const result = await response.json();
+                if (result.success) {
+                    renderFunctionsTable(result.data);
+                }
+            } catch (error) {
+                console.error('Failed to load functions:', error);
+            }
+        }
+
+        function renderFunctionsTable(functions) {
+            const tbody = document.getElementById('functions-tbody');
+            if (!functions || functions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No functions found</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = functions.slice(0, 100).map(f => `
+                <tr>
+                    <td><a href="#" onclick="viewFunction(${f.id})" style="color:var(--accent-amber);">${f.name}</a></td>
+                    <td>${f.type_name || '-'}</td>
+                    <td><code>${(f.signature || f.name).substring(0, 40)}...</code></td>
+                    <td>${f.file_path ? f.file_path.split('/').pop() : '-'}</td>
+                    <td>${f.start_line || '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function refreshData() {
+            await Promise.all([
+                loadStats(),
+                loadGraph(),
+                loadFiles(),
+                loadTypes(),
+                loadFunctions()
+            ]);
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerHTML = `<span>✅</span><span>${message}</span>`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            initSocketIO();
+            
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    tab.classList.add('active');
+                    document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+                    
+                    if (tab.dataset.tab === 'architecture' || tab.dataset.tab === 'flow' || tab.dataset.tab === 'sequence') {
+                        mermaid.run({ nodes: [document.getElementById(`${tab.dataset.tab}-diagram`)] });
+                    }
+                });
+            });
+
+            const fileSearch = document.getElementById('file-search');
+            if (fileSearch) {
+                fileSearch.addEventListener('input', (e) => {
+                    const query = e.target.value.toLowerCase();
+                    const rows = document.querySelectorAll('#files-tbody tr');
+                    rows.forEach(row => {
+                        const text = row.textContent.toLowerCase();
+                        row.style.display = text.includes(query) ? '' : 'none';
+                    });
+                });
+            }
+
+            const typeSearch = document.getElementById('type-search');
+            if (typeSearch) {
+                typeSearch.addEventListener('input', (e) => {
+                    const query = e.target.value.toLowerCase();
+                    const rows = document.querySelectorAll('#types-tbody tr');
+                    rows.forEach(row => {
+                        const text = row.textContent.toLowerCase();
+                        row.style.display = text.includes(query) ? '' : 'none';
+                    });
+                });
+            }
+
+            const functionSearch = document.getElementById('function-search');
+            if (functionSearch) {
+                functionSearch.addEventListener('input', (e) => {
+                    const query = e.target.value.toLowerCase();
+                    const rows = document.querySelectorAll('#functions-tbody tr');
+                    rows.forEach(row => {
+                        const text = row.textContent.toLowerCase();
+                        row.style.display = text.includes(query) ? '' : 'none';
+                    });
+                });
+            }
+
+            const llmSubmit = document.getElementById('llm-submit');
+            if (llmSubmit) {
+                llmSubmit.addEventListener('click', async () => {
+                    const question = document.getElementById('llm-question').value;
+                    if (!question) return;
+                    
+                    const responseDiv = document.getElementById('llm-response');
+                    responseDiv.style.display = 'block';
+                    responseDiv.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+                    
+                    try {
+                        const response = await fetch(`${API_BASE}/api/llm/query`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ question })
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            responseDiv.innerHTML = `<p>${result.data.answer}</p><small style="color:var(--text-secondary);">Model: ${result.data.model}</small>`;
+                        } else {
+                            responseDiv.innerHTML = `<p style="color:var(--accent-rose);">Error: ${result.error}</p>`;
+                        }
+                    } catch (error) {
+                        responseDiv.innerHTML = `<p style="color:var(--accent-rose);">Request failed: ${error.message}</p>`;
+                    }
+                });
+            }
+
+            await refreshData();
+            setInterval(loadStats, 5000);
+        });
+
+        function viewFile(id) {
+            console.log('View file:', id);
+        }
+
+        function viewType(id) {
+            console.log('View type:', id);
+        }
+
+        function viewFunction(id) {
+            console.log('View function:', id);
+        }
+    </script>
+</body>
+</html>
