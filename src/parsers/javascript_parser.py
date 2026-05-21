@@ -213,15 +213,19 @@ class JavaScriptParser(UniversalParser):
             })
         
         for match in self._import_pattern.finditer(content):
-            imported = match.group(1) or match.group(2)
-            module = match.group(3)
-            
-            names = [n.strip() for n in imported.split(',')] if imported else []
+            module = match.group(2)
+            if not module:
+                continue
+                
+            names_str = match.group(1)
+            names = []
+            if names_str:
+                names = [n.strip() for n in names_str.split(',')]
             
             result.imports.append({
                 'module_path': module,
                 'imported_names': names,
-                'is_wildcard': '*' in imported
+                'is_wildcard': '*' in (names_str or '')
             })
         
         self._resolve_calls(result, content)

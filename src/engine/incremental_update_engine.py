@@ -17,7 +17,8 @@ from ..database import (
 )
 from ..parsers import (
     UniversalParser, ParserRegistry,
-    ParseResult, detect_language, get_parser_for_file
+    ParseResult, detect_language, get_parser_for_file,
+    initialize_all_parsers
 )
 from .file_monitor import FileMonitor, FileEvent, FileEventType
 
@@ -59,6 +60,8 @@ class IncrementalUpdateEngine:
     def initialize(self) -> None:
         """Initialize database and cache"""
         LOGGER.info("Initializing incremental update engine...")
+        
+        initialize_all_parsers()
         
         DATABASE_CONNECTION.initialize_database()
         

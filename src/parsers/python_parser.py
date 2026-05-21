@@ -256,8 +256,6 @@ class PythonParser(UniversalParser):
             
             if indent <= func_indent:
                 return i
-            
-            return i + 1
         
         return len(lines)
     
