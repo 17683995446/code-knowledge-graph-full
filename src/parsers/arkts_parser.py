@@ -39,7 +39,12 @@ class ArkAnalyzerParser(UniversalParser):
             r'interface\s+(\w+)(?:\s+extends\s+([\w,\s]+))?'
         )
         self._import_pattern = re.compile(
-            r'import\s+(?:\{([^}]+)\}\s+from\s+)?[\'"]([^\'"]+)[\'"]'
+            r'import\s+(?:'
+            r'\{([^}]+)\}\s+from\s+[\'"]([^\'"]+)[\'"]|'
+            r'(\w+)\s+from\s+[\'"]([^\'"]+)[\'"]|'
+            r'\*\s+as\s+\w+\s+from\s+[\'"]([^\'"]+)[\'"]|'
+            r'[\'"]([^\'"]+)[\'"]'
+            r')'
         )
         self._call_pattern = re.compile(
             r'(\w+)\s*\('
@@ -184,14 +189,38 @@ class ArkAnalyzerParser(UniversalParser):
         imports = []
         
         for match in self._import_pattern.finditer(content):
-            imported_names = match.group(1)
-            module_path = match.group(2)
+            group1 = match.group(1)
+            group2 = match.group(2)
+            group3 = match.group(3)
+            group4 = match.group(4)
+            group5 = match.group(5)
+            group6 = match.group(6)
             
-            imports.append({
-                'module_path': module_path,
-                'imported_names': imported_names.split(',') if imported_names else [],
-                'is_wildcard': '*' in (imported_names or '')
-            })
+            if group1 and group2:
+                names = [n.strip() for n in group1.split(',') if n.strip()]
+                imports.append({
+                    'module_path': group2,
+                    'imported_names': names,
+                    'is_wildcard': False
+                })
+            elif group3 and group4:
+                imports.append({
+                    'module_path': group4,
+                    'imported_names': [group3.strip()],
+                    'is_wildcard': False
+                })
+            elif group5:
+                imports.append({
+                    'module_path': group5,
+                    'imported_names': [],
+                    'is_wildcard': True
+                })
+            elif group6:
+                imports.append({
+                    'module_path': group6,
+                    'imported_names': [],
+                    'is_wildcard': False
+                })
         
         return imports
     

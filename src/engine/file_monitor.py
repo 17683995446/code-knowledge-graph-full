@@ -157,7 +157,7 @@ class FileMonitor:
             if pattern in path_str:
                 return False
         
-        if any(part.startswith('.') for part in file_path.parts):
+        if any(part.startswith('.') and part not in ('..',) for part in file_path.parts[:-1]):
             return False
         
         return True
