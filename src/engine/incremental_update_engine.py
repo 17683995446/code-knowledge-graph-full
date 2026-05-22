@@ -56,6 +56,7 @@ class IncrementalUpdateEngine:
         self._type_cache: Dict[str, Dict[str, Any]] = {}
         self._function_cache: Dict[str, Dict[str, Any]] = {}
         self._pending_calls: List[Dict[str, Any]] = []
+        self._running = False
     
     def initialize(self) -> None:
         """Initialize database and cache"""
