@@ -199,7 +199,11 @@ class GoParser(UniversalParser):
         for match in self._struct_pattern.finditer(content):
             struct_name = match.group(1)
             start_line = content[:match.start()].count('\n') + 1
-            end_line = self._find_matching_brace(content, match.end())
+            brace_pos = content.find('{', match.end())
+            if brace_pos != -1:
+                end_line = self._find_matching_brace(content, brace_pos)
+            else:
+                end_line = start_line
             
             result.types.append({
                 'name': struct_name,
@@ -212,7 +216,11 @@ class GoParser(UniversalParser):
         for match in self._interface_pattern.finditer(content):
             interface_name = match.group(1)
             start_line = content[:match.start()].count('\n') + 1
-            end_line = self._find_matching_brace(content, match.end())
+            brace_pos = content.find('{', match.end())
+            if brace_pos != -1:
+                end_line = self._find_matching_brace(content, brace_pos)
+            else:
+                end_line = start_line
             
             result.types.append({
                 'name': interface_name,
@@ -225,7 +233,11 @@ class GoParser(UniversalParser):
         for match in self._function_pattern.finditer(content):
             func_name = match.group(1)
             start_line = content[:match.start()].count('\n') + 1
-            end_line = self._find_matching_brace(content, match.end())
+            brace_pos = content.find('{', match.end())
+            if brace_pos != -1:
+                end_line = self._find_matching_brace(content, brace_pos)
+            else:
+                end_line = start_line
             
             result.functions.append({
                 'name': func_name,
@@ -239,7 +251,11 @@ class GoParser(UniversalParser):
         for match in self._method_pattern.finditer(content):
             method_name = match.group(1)
             start_line = content[:match.start()].count('\n') + 1
-            end_line = self._find_matching_brace(content, match.end())
+            brace_pos = content.find('{', match.end())
+            if brace_pos != -1:
+                end_line = self._find_matching_brace(content, brace_pos)
+            else:
+                end_line = start_line
             
             result.functions.append({
                 'name': method_name,
