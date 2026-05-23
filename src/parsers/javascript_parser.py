@@ -38,7 +38,12 @@ class JavaScriptParser(UniversalParser):
             r'class\s+(\w+)(?:\s+extends\s+(\w+))?'
         )
         self._import_pattern = re.compile(
-            r'import\s+(?:\{([^}]+)\}|[\w*]+)\s+from\s+[\'"]([^\'"]+)[\'"]'
+            r'import\s+(?:'
+            r'\{([^}]+)\}\s+from\s+[\'"]([^\'"]+)[\'"]|'
+            r'([\w*]+)\s+from\s+[\'"]([^\'"]+)[\'"]|'
+            r'([\w*]+)\s+as\s+\w+\s+from\s+[\'"]([^\'"]+)[\'"]|'
+            r'[\'"]([^\'"]+)[\'"]'
+            r')'
         )
         self._call_pattern = re.compile(r'(\w+)\s*\(')
         
@@ -213,20 +218,43 @@ class JavaScriptParser(UniversalParser):
             })
         
         for match in self._import_pattern.finditer(content):
-            module = match.group(2)
-            if not module:
-                continue
-                
-            names_str = match.group(1)
-            names = []
-            if names_str:
-                names = [n.strip() for n in names_str.split(',')]
+            group1 = match.group(1)
+            group2 = match.group(2)
+            group3 = match.group(3)
+            group4 = match.group(4)
+            group5 = match.group(5)
+            group6 = match.group(6)
+            group7 = match.group(7)
             
-            result.imports.append({
-                'module_path': module,
-                'imported_names': names,
-                'is_wildcard': '*' in (names_str or '')
-            })
+            if group1 and group2:
+                # Named import: import { A, B } from 'module'
+                names = [n.strip() for n in group1.split(',') if n.strip()]
+                result.imports.append({
+                    'module_path': group2,
+                    'imported_names': names,
+                    'is_wildcard': False
+                })
+            elif group3 and group4:
+                # Default import: import A from 'module'
+                result.imports.append({
+                    'module_path': group4,
+                    'imported_names': [group3],
+                    'is_wildcard': '*' == group3
+                })
+            elif group5 and group6:
+                # Wildcard import: import * as All from 'module'
+                result.imports.append({
+                    'module_path': group6,
+                    'imported_names': [],
+                    'is_wildcard': True
+                })
+            elif group7:
+                # Side-effect import: import 'module'
+                result.imports.append({
+                    'module_path': group7,
+                    'imported_names': [],
+                    'is_wildcard': False
+                })
         
         self._resolve_calls(result, content)
     
